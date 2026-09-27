@@ -1,0 +1,78 @@
+name: ai-router-poc
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-router-poc-api:local
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-30}
+      OLLAMA_MAX_RETRIES: ${OLLAMA_MAX_RETRIES:-2}
+      OLLAMA_RETRY_BACKOFF_SECONDS: ${OLLAMA_RETRY_BACKOFF_SECONDS:-0.1}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_FROM: ${SMTP_FROM:-noreply@ai-router.local}
+      MESSAGE_MAX_LENGTH: ${MESSAGE_MAX_LENGTH:-2000}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
+      SMTP_MAX_RETRIES: ${SMTP_MAX_RETRIES:-3}
+      SMTP_RETRY_BACKOFF_SECONDS: ${SMTP_RETRY_BACKOFF_SECONDS:-0.1}
+      AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-180}
+      AGENT_RETRY_BACKOFF_SECONDS: ${AGENT_RETRY_BACKOFF_SECONDS:-0.1}
+      AGENT_REASON_MAX_LENGTH: ${AGENT_REASON_MAX_LENGTH:-300}
+      AGENT_NO_SEND_MAX_ATTEMPTS: ${AGENT_NO_SEND_MAX_ATTEMPTS:-2}
+    depends_on:
+      mailpit:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.31.0
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.34.2
+    entrypoint: ["/bin/sh", "/usr/local/bin/ollama-entrypoint.sh"]
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ./docker/ollama/entrypoint.sh:/usr/local/bin/ollama-entrypoint.sh:ro
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
